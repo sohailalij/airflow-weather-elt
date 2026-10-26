@@ -21,7 +21,7 @@ def test_no_import_errors(dagbag):
 
 
 def test_dag_structure(dagbag):
-    dag = dagbag.get_dag("weather_air_quality_elt")
+    dag = dagbag.dags.get("weather_air_quality_elt")
     assert dag is not None
     assert set(dag.task_ids) == {
         "list_cities",
