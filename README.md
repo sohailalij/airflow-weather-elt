@@ -1,6 +1,6 @@
 # Weather & Air Quality ELT with Apache Airflow
 
-![CI](https://github.com/YOUR_USERNAME/airflow-weather-elt/actions/workflows/ci.yml/badge.svg)
+![CI](https://github.com/sohailalij/airflow-weather-elt/actions/workflows/ci.yml/badge.svg)
 
 A production-style batch pipeline built on **Apache Airflow 2.10**. Every day it pulls hourly weather
 and air-quality data for six cities from the free [Open-Meteo](https://open-meteo.com) APIs, lands the
