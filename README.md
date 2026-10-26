@@ -10,7 +10,7 @@ raw JSON, loads it into **DuckDB**, builds an analytics mart, and fails the run 
 
 ## Architecture
 
-![DAG run](docs/dag_graph.png)
+![DAG run](docs/dag_graph.jpg)
 
 ```mermaid
 flowchart LR
