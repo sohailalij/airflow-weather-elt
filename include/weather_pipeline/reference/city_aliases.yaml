@@ -1,0 +1,8 @@
+# Known alternate names for canonical cities (see config.CITIES).
+# Aliases are matched exactly after normalization (lowercase, accents and punctuation removed).
+# Anything not covered here falls through to fuzzy matching.
+phoenix: [phx]
+london: [greater london]
+delhi: [new delhi, nct of delhi]
+sao_paulo: [sp, sampa]
+tokyo: [tokio]

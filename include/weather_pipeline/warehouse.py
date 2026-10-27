@@ -17,6 +17,7 @@ from weather_pipeline import config
 DDL = """
 CREATE SCHEMA IF NOT EXISTS raw;
 CREATE SCHEMA IF NOT EXISTS marts;
+CREATE SCHEMA IF NOT EXISTS ref;
 
 CREATE TABLE IF NOT EXISTS raw.hourly_observations (
     city             VARCHAR   NOT NULL,
@@ -41,6 +42,35 @@ CREATE TABLE IF NOT EXISTS marts.daily_city_summary (
     max_us_aqi       INTEGER,
     aqi_category     VARCHAR,
     hours_observed   INTEGER
+);
+
+CREATE TABLE IF NOT EXISTS ref.site_resolution (
+    site_id          VARCHAR NOT NULL,
+    raw_location     VARCHAR,
+    site_type        VARCHAR,
+    cost_center      VARCHAR,
+    resolved_city    VARCHAR,
+    match_method     VARCHAR,
+    match_score      DOUBLE,
+    status           VARCHAR,
+    business_unit    VARCHAR,
+    owner_team       VARCHAR,
+    criticality_tier INTEGER,
+    matched_rules    VARCHAR,
+    resolved_at      TIMESTAMP DEFAULT current_timestamp
+);
+
+CREATE TABLE IF NOT EXISTS marts.site_environment_daily (
+    obs_date         DATE    NOT NULL,
+    site_id          VARCHAR NOT NULL,
+    city             VARCHAR,
+    business_unit    VARCHAR,
+    owner_team       VARCHAR,
+    criticality_tier INTEGER,
+    avg_temp_c       DOUBLE,
+    avg_pm2_5        DOUBLE,
+    max_us_aqi       INTEGER,
+    aqi_category     VARCHAR
 );
 
 CREATE OR REPLACE VIEW marts.city_rolling_7d AS
@@ -150,6 +180,108 @@ def build_daily_summary(ds: str, db_path: Path | str | None = None) -> int:
             "SELECT count(*) FROM marts.daily_city_summary WHERE obs_date = CAST(? AS DATE)",
             [ds],
         ).fetchone()[0]
+
+
+def load_site_resolutions(records: list[dict], db_path: Path | str | None = None) -> int:
+    """Replace the site resolution snapshot (the inventory is a full snapshot each run)."""
+    with connect(db_path) as con:
+        con.execute("BEGIN")
+        try:
+            con.execute("DELETE FROM ref.site_resolution")
+            con.executemany(
+                "INSERT INTO ref.site_resolution (site_id, raw_location, site_type, cost_center, "
+                "resolved_city, match_method, match_score, status, business_unit, owner_team, "
+                "criticality_tier, matched_rules) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                [
+                    (
+                        r["site_id"],
+                        r["raw_location"],
+                        r["site_type"],
+                        r["cost_center"],
+                        r["resolved_city"],
+                        r["match_method"],
+                        r["match_score"],
+                        r["status"],
+                        r["business_unit"],
+                        r["owner_team"],
+                        r["criticality_tier"],
+                        r["matched_rules"],
+                    )
+                    for r in records
+                ],
+            )
+            con.execute("COMMIT")
+        except Exception:
+            con.execute("ROLLBACK")
+            raise
+    return len(records)
+
+
+def build_site_environment(ds: str, db_path: Path | str | None = None) -> int:
+    """Attribute each day's city metrics to resolved sites, their owners and tiers."""
+    with connect(db_path) as con:
+        con.execute("BEGIN")
+        try:
+            con.execute(
+                "DELETE FROM marts.site_environment_daily WHERE obs_date = CAST(? AS DATE)",
+                [ds],
+            )
+            con.execute(
+                """
+                INSERT INTO marts.site_environment_daily
+                SELECT d.obs_date, s.site_id, s.resolved_city, s.business_unit, s.owner_team,
+                       s.criticality_tier, d.avg_temp_c, d.avg_pm2_5, d.max_us_aqi, d.aqi_category
+                FROM ref.site_resolution s
+                JOIN marts.daily_city_summary d
+                  ON d.city = s.resolved_city AND d.obs_date = CAST(? AS DATE)
+                WHERE s.status = 'resolved'
+                """,
+                [ds],
+            )
+            con.execute("COMMIT")
+        except Exception:
+            con.execute("ROLLBACK")
+            raise
+        return con.execute(
+            "SELECT count(*) FROM marts.site_environment_daily WHERE obs_date = CAST(? AS DATE)",
+            [ds],
+        ).fetchone()[0]
+
+
+def find_resolution_failures(
+    ds: str,
+    min_resolution_rate: float = config.MIN_RESOLUTION_RATE,
+    db_path: Path | str | None = None,
+) -> list[str]:
+    """Monitor the attribution layer: resolution rate, ownership coverage, join completeness."""
+    failures: list[str] = []
+    with connect(db_path) as con:
+        total, resolved, unowned = con.execute(
+            """
+            SELECT count(*),
+                   count(*) FILTER (WHERE status = 'resolved'),
+                   count(*) FILTER (WHERE owner_team = 'unassigned')
+            FROM ref.site_resolution
+            """
+        ).fetchone()
+        if total == 0:
+            return ["ref.site_resolution is empty"]
+        rate = resolved / total
+        if rate < min_resolution_rate:
+            failures.append(
+                f"site resolution rate {rate:.0%} is below the {min_resolution_rate:.0%} minimum"
+            )
+        if unowned:
+            failures.append(f"{unowned} site(s) have no owner assigned")
+        attributed = con.execute(
+            "SELECT count(*) FROM marts.site_environment_daily WHERE obs_date = CAST(? AS DATE)",
+            [ds],
+        ).fetchone()[0]
+        if attributed != resolved:
+            failures.append(
+                f"site_environment_daily has {attributed} rows for {ds}, expected {resolved}"
+            )
+    return failures
 
 
 def find_quality_failures(

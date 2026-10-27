@@ -22,3 +22,9 @@ CITIES = [
     {"name": "tokyo", "lat": 35.6762, "lon": 139.6503},
     {"name": "nairobi", "lat": -1.2921, "lon": 36.8219},
 ]
+
+# Entity resolution
+REFERENCE_DIR = Path(__file__).parent / "reference"
+FUZZY_THRESHOLD = 85.0  # minimum similarity (0-100) to accept a fuzzy match
+AMBIGUITY_MARGIN = 5.0  # runner-up closer than this to the winner => ambiguous, not resolved
+MIN_RESOLUTION_RATE = 0.8  # quality gate: fail the run if fewer sites resolve

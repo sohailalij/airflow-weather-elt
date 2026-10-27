@@ -1,0 +1,32 @@
+# Ownership assignment rules, kept in version control so every change is reviewed.
+#
+# Semantics
+#   * Rules are evaluated top to bottom.
+#   * For each field, the FIRST matching rule that sets it wins.
+#   * `defaults` fill any field no rule set.
+#   * Supported conditions: site_type (exact), cost_center_prefix (startswith).
+rules:
+  - name: data-centers-are-tier-1
+    when: {site_type: data_center}
+    then: {criticality_tier: 1}
+
+  - name: offices-are-tier-2
+    when: {site_type: office}
+    then: {criticality_tier: 2}
+
+  - name: security-cost-centers
+    when: {cost_center_prefix: CC-SEC}
+    then: {business_unit: Security, owner_team: secops}
+
+  - name: operations-cost-centers
+    when: {cost_center_prefix: CC-OPS}
+    then: {business_unit: Operations, owner_team: site-reliability}
+
+  - name: engineering-cost-centers
+    when: {cost_center_prefix: CC-ENG}
+    then: {business_unit: Engineering, owner_team: platform-eng}
+
+defaults:
+  business_unit: unassigned
+  owner_team: unassigned
+  criticality_tier: 3

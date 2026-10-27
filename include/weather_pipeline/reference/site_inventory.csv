@@ -1,0 +1,14 @@
+site_id,raw_location,site_type,cost_center
+S001,"Phoenix, AZ",data_center,CC-SEC-100
+S002,PHX,office,CC-ENG-200
+S003,"London, UK",office,CC-ENG-210
+S004,Londn,data_center,CC-OPS-300
+S005,New Delhi,data_center,CC-OPS-310
+S006,Delhi NCR,office,CC-ENG-220
+S007,São Paulo,office,CC-SEC-110
+S008,Sao-Paulo - BR,lab,CC-ENG-230
+S009,Tokio,data_center,CC-OPS-320
+S010,Nairobi,office,CC-SEC-120
+S011,Nairobi Kenya,lab,CC-ENG-240
+S012,Atlantis Lab,lab,CC-ENG-250
+S013,Tokyo London Joint Lab,lab,CC-ENG-260

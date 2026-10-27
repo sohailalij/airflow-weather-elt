@@ -39,3 +39,53 @@ def test_quality_catches_missing_city_and_bad_values(tmp_path):
     failures = warehouse.find_quality_failures(DS, CITIES, db)
     assert any("tokyo: no rows" in f for f in failures)
     assert any("london: temperature outside" in f for f in failures)
+
+
+def _site_records():
+    from weather_pipeline import entity_resolution as er
+
+    return er.resolve_inventory(
+        er.load_inventory(),
+        ["london", "tokyo", "phoenix", "delhi", "sao_paulo", "nairobi"],
+        er.load_yaml("city_aliases.yaml"),
+        er.load_yaml("ownership_rules.yaml"),
+    )
+
+
+def test_site_attribution_end_to_end(tmp_path):
+    db = tmp_path / "wh.duckdb"
+    cities = ["phoenix", "london", "delhi", "sao_paulo", "tokyo", "nairobi"]
+    warehouse.load_rows(_rows(cities), DS, db)
+    warehouse.build_daily_summary(DS, db)
+    warehouse.load_site_resolutions(_site_records(), db)
+    assert warehouse.build_site_environment(DS, db) == 11  # 13 sites, 2 not resolvable
+    assert warehouse.find_resolution_failures(DS, db_path=db) == []
+    with warehouse.connect(db) as con:
+        row = con.execute(
+            "SELECT city, business_unit, owner_team, criticality_tier "
+            "FROM marts.site_environment_daily WHERE site_id = 'S004'"
+        ).fetchone()
+    assert row == ("london", "Operations", "site-reliability", 1)  # 'Londn' typo resolved
+
+
+def test_site_attribution_is_idempotent(tmp_path):
+    db = tmp_path / "wh.duckdb"
+    cities = ["phoenix", "london", "delhi", "sao_paulo", "tokyo", "nairobi"]
+    warehouse.load_rows(_rows(cities), DS, db)
+    warehouse.build_daily_summary(DS, db)
+    for _ in range(3):
+        warehouse.load_site_resolutions(_site_records(), db)
+        warehouse.build_site_environment(DS, db)
+    with warehouse.connect(db) as con:
+        assert con.execute("SELECT count(*) FROM ref.site_resolution").fetchone()[0] == 13
+        assert con.execute("SELECT count(*) FROM marts.site_environment_daily").fetchone()[0] == 11
+
+
+def test_resolution_gate_fails_when_rate_drops(tmp_path):
+    db = tmp_path / "wh.duckdb"
+    records = _site_records()
+    for r in records[:6]:  # simulate a broken upstream feed: most sites stop resolving
+        r.update(resolved_city=None, status="unresolved", match_method="none", match_score=0.0)
+    warehouse.load_site_resolutions(records, db)
+    failures = warehouse.find_resolution_failures(DS, db_path=db)
+    assert any("resolution rate" in f for f in failures)

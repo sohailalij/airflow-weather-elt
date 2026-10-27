@@ -26,10 +26,12 @@ def test_dag_structure(dagbag):
     assert set(dag.task_ids) == {
         "list_cities",
         "extract",
+        "resolve_sites",
         "load_raw",
         "build_marts",
         "quality_checks",
     }
-    assert dag.get_task("load_raw").upstream_task_ids == {"extract"}
+    assert dag.get_task("resolve_sites").upstream_task_ids == {"list_cities"}
+    assert dag.get_task("load_raw").upstream_task_ids == {"extract", "resolve_sites"}
     assert dag.get_task("quality_checks").upstream_task_ids == {"build_marts"}
     assert dag.catchup is False and dag.max_active_runs == 1
